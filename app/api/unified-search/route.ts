@@ -9,6 +9,22 @@ import {
 } from "@/lib/searchUtils";
 import { API_CONFIG, HTTP_HEADERS } from "@/lib/constants";
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function retryRequest(fn: () => Promise<any>, maxRetries = 3, delayMs = 1000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      if (error.response?.status === 429 && i < maxRetries - 1) {
+        await delay(delayMs * Math.pow(2, i));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const searchedTerm = searchParams.get("searchedTerm");
@@ -76,12 +92,15 @@ export async function GET(request: Request) {
         const apiUrl = buildSearchUrl(url, analysis, statusParams);
 
         try {
-          const statusResponse = await axios.get(apiUrl, {
-            headers: {
-              [HTTP_HEADERS.RAPIDAPI_KEY]: apiKey,
-              [HTTP_HEADERS.RAPIDAPI_HOST]: API_CONFIG.ZILLOW_HOST,
-            },
-          });
+          await delay(500);
+          const statusResponse = await retryRequest(() => 
+            axios.get(apiUrl, {
+              headers: {
+                [HTTP_HEADERS.RAPIDAPI_KEY]: apiKey,
+                [HTTP_HEADERS.RAPIDAPI_HOST]: API_CONFIG.ZILLOW_HOST,
+              },
+            })
+          );
 
           if (statusResponse.data?.props) {
             // Add listing type to each property for identification

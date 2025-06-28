@@ -28,7 +28,8 @@ const Navbar = () => {
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [value] = useDebounce(searchedTerm, 500);
+  const [searchInput, setSearchInput] = useState(searchedTerm || "");
+  const [debouncedSearchInput] = useDebounce(searchInput, 300);
 
   const [draftYearBuilt, setDraftYearBuilt] = useState({
     buildYearMin: filterState?.buildYear?.min || "2000",
@@ -41,6 +42,11 @@ const Navbar = () => {
     router.push(`?query=${getQueryString()}`);
     queryClient.invalidateQueries({ queryKey: ["zillow-unified"] });
   }, [router, getQueryString]);
+
+  // Sync search input with query state
+  useEffect(() => {
+    setSearchInput(searchedTerm || "");
+  }, [searchedTerm]);
 
   // Only trigger search when filters change if we already have a search term
   useEffect(() => {
@@ -63,12 +69,13 @@ const Navbar = () => {
     useQuery({
       queryFn: async () => {
         const res = await axios.get(
-          `/api/get-location-suggestion?location=${value}`
+          `/api/get-location-suggestion?location=${debouncedSearchInput}`
         );
         return res.data;
       },
-      queryKey: [query.searchedTerm],
-      enabled: !!value,
+      queryKey: ["location-suggestions", debouncedSearchInput],
+      enabled: !!debouncedSearchInput && debouncedSearchInput.length > 2 && dropdownOpen,
+      staleTime: 5 * 60 * 1000, // 5 minutes
     });
 
   const searchExamples = [
@@ -115,8 +122,8 @@ const Navbar = () => {
                   <IoIosSearch className="text-lg sm:text-xl" />
                 </div>
                 <input
-                  value={searchedTerm || ""}
-                  onChange={(e) => updateQuery("searchedTerm", e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   onFocus={() => setDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
                   type="text"
@@ -124,14 +131,16 @@ const Navbar = () => {
                   placeholder={userLocation ? "Search specific address, city, ZIP..." : "Search by address, city, ZIP, school..."}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      handleSearch();
+                      updateQuery("searchedTerm", searchInput);
+                      setTimeout(handleSearch, 50);
                       setDropdownOpen(false);
                     }
                   }}
                 />
                 <button
                   onClick={() => {
-                    handleSearch();
+                    updateQuery("searchedTerm", searchInput);
+                    setTimeout(handleSearch, 50);
                     setDropdownOpen(false);
                   }}
                   className="h-10 sm:h-12 px-3 sm:px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-r-lg transition-colors duration-200 flex items-center gap-1 sm:gap-2"
@@ -142,31 +151,75 @@ const Navbar = () => {
               </div>
 
               {/* Search Suggestions Dropdown */}
-              {dropdownOpen && locationSuggestions?.results?.length > 0 && (
+              {dropdownOpen && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto search-examples-grid">
                   <div className="p-2">
-                    <div className="text-xs text-gray-500 px-2 py-1 border-b border-gray-100 mb-1">
-                      Suggested locations:
+                    {/* Location Suggestions */}
+                    {locationSuggestions?.results?.length > 0 && (
+                      <>
+                        <div className="text-xs text-gray-500 px-2 py-1 border-b border-gray-100 mb-1">
+                          📍 Suggested locations:
+                        </div>
+                        {locationSuggestions.results.slice(0, 5).map((suggestion: any, index: number) => (
+                          <div
+                            key={suggestion.id || `suggestion-${index}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setSearchInput(suggestion.display);
+                              updateQuery("searchedTerm", suggestion.display);
+                              setDropdownOpen(false);
+                              setTimeout(handleSearch, 100);
+                            }}
+                            className="flex items-center p-2 hover:bg-blue-50 cursor-pointer rounded-md"
+                          >
+                            <IoLocationOutline className="text-blue-500 mr-3 flex-shrink-0" />
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-medium text-sm truncate">{suggestion.display}</span>
+                              {suggestion.metaData && (
+                                <span className="text-xs text-gray-500 truncate">
+                                  {suggestion.metaData.city}, {suggestion.metaData.state}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="border-t border-gray-100 my-2"></div>
+                      </>
+                    )}
+                    
+                    {/* Loading State */}
+                    {isLoadingLocationSuggestions && debouncedSearchInput.length > 2 && (
+                      <>
+                        <div className="text-xs text-gray-500 px-2 py-1 border-b border-gray-100 mb-1">
+                          🔍 Searching locations...
+                        </div>
+                        <div className="flex items-center p-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-3"></div>
+                          <span className="text-sm text-gray-500">Finding suggestions...</span>
+                        </div>
+                        <div className="border-t border-gray-100 my-2"></div>
+                      </>
+                    )}
+                    
+                    {/* Search Examples */}
+                    <div className="text-xs text-gray-500 px-2 py-1 mb-1">
+                      💡 Search examples:
                     </div>
-                    {locationSuggestions.results.map((suggestion: any, index: number) => (
+                    {searchExamples.slice(0, 4).map((example, i) => (
                       <div
-                        key={suggestion.id || `suggestion-${index}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          updateQuery("searchedTerm", suggestion.display);
+                        key={i}
+                        onClick={() => {
+                          setSearchInput(example.query);
+                          updateQuery("searchedTerm", example.query);
                           setDropdownOpen(false);
                           setTimeout(handleSearch, 100);
                         }}
                         className="flex items-center p-2 hover:bg-gray-50 cursor-pointer rounded-md"
                       >
-                        <IoIosSearch className="text-gray-400 mr-3 flex-shrink-0" />
+                        <span className="text-sm mr-3 flex-shrink-0">{example.icon}</span>
                         <div className="flex flex-col min-w-0">
-                          <span className="font-medium text-sm truncate">{suggestion.display}</span>
-                          {suggestion.metaData && (
-                            <span className="text-xs text-gray-500 truncate">
-                              {suggestion.metaData.city}, {suggestion.metaData.state}
-                            </span>
-                          )}
+                          <span className="font-medium text-sm truncate">{example.query}</span>
+                          <span className="text-xs text-gray-500">{example.type}</span>
                         </div>
                       </div>
                     ))}
@@ -198,6 +251,7 @@ const Navbar = () => {
                             key={i}
                             className="w-full text-left p-2 hover:bg-blue-50 rounded-md flex items-center justify-between group/item"
                             onClick={() => {
+                              setSearchInput(example.query);
                               updateQuery("searchedTerm", example.query);
                               setTimeout(handleSearch, 100);
                             }}

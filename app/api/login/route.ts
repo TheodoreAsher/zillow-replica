@@ -7,7 +7,14 @@ type User = {
 };
 
 const users = process.env.ZILLOW_USERS as unknown as string;
-const parsedUsers = JSON.parse(users) as User[];
+let parsedUsers: User[] = [];
+
+try {
+  parsedUsers = users ? JSON.parse(users) as User[] : [];
+} catch (error) {
+  console.error('Failed to parse ZILLOW_USERS:', error);
+  parsedUsers = [];
+}
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json();

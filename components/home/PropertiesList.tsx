@@ -173,9 +173,8 @@ const PropertiesListComponent = () => {
         params.set("lng", propertyWithCoords.longitude.toString());
 
         // Don't update URL if we're already on the same page (prevents unnecessary history entries)
-        const currentParams = new URLSearchParams(window.location.search);
-        const currentLat = currentParams.get("lat");
-        const currentLng = currentParams.get("lng");
+        const currentLat = searchParams.get("lat");
+        const currentLng = searchParams.get("lng");
 
         if (currentLat !== params.get("lat") || currentLng !== params.get("lng")) {
           router.push(`?${params.toString()}`);

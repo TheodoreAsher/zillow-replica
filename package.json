@@ -27,6 +27,7 @@
     "next": "15.3.3",
     "next-auth": "^4.24.11",
     "nextjs-toploader": "^3.8.16",
+    "puppeteer-core": "^24.11.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.58.1",
