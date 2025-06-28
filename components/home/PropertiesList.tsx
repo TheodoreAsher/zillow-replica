@@ -15,12 +15,13 @@ import { usePropertyData } from "@/store/propertyData";
 import { useLocation } from "@/context/LocationContext";
 import { calculateDistance } from "@/utils/distance";
 import { IoSearchOutline, IoHomeOutline, IoLocationOutline } from "react-icons/io5";
+import { IoMdClose } from "react-icons/io";
 import PropertyTypeBreakdown from "./PropertyTypeBreakdown";
 import LocationPrompt from "../LocationPrompt";
 
 const PropertiesListComponent = () => {
   const { propertyData, setPropertyData, selectedPropertyId, setSelectedPropertyId } = usePropertyData();
-  const { userLocation } = useLocation();
+  const { userLocation, clearLocation } = useLocation();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -33,9 +34,15 @@ const PropertiesListComponent = () => {
   const selectedState = useFilterStore((state) => state.selectedState);
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
 
-  // Check if we should show location prompt
+  // Check if we should show location prompt - prioritize location on first load
   useEffect(() => {
-    if (!userLocation && !searchedTerm) {
+    const hasSearchQuery = searchedTerm && searchedTerm.trim() !== '';
+    const hasUserLocation = userLocation !== null;
+    
+    // Show location prompt if:
+    // 1. No user location AND no search query
+    // 2. This is the first visit (no previous location stored)
+    if (!hasUserLocation && !hasSearchQuery) {
       setShowLocationPrompt(true);
     } else {
       setShowLocationPrompt(false);
@@ -49,7 +56,7 @@ const PropertiesListComponent = () => {
   } = useQuery({
     queryFn: async () => {
       // Check if we have a search term or user location
-      if (searchedTerm) {
+      if (searchedTerm && searchedTerm.trim()) {
         // Use the unified search endpoint for text-based searches
         const params = new URLSearchParams();
         params.append("searchedTerm", searchedTerm);
@@ -117,19 +124,14 @@ const PropertiesListComponent = () => {
         return res.data;
       } else {
         // No search term or location available
-        return null;
+        throw new Error("No search criteria provided");
       }
     },
-    enabled: !!(searchedTerm || userLocation),
+    enabled: !!(searchedTerm?.trim() || userLocation) && !showLocationPrompt,
     queryKey: ["property-search", searchedTerm, userLocation, listingType, filterState],
-    staleTime: 0,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 2,
   });
-
-  // Get selected property from the list based on selectedPropertyId
-  const selectedProperty = useMemo(() => {
-    if (!selectedPropertyId || !propertyDataByLocation?.nearbyHomes) return null;
-    return propertyDataByLocation.nearbyHomes.find((prop: any) => prop.zpid === selectedPropertyId);
-  }, [selectedPropertyId, propertyDataByLocation?.nearbyHomes]);
 
   // Calculate distances when user location changes or properties change
   const propertiesWithDistance = useMemo(() => {
@@ -150,40 +152,23 @@ const PropertiesListComponent = () => {
     });
   }, [propertyDataByLocation?.nearbyHomes, userLocation]);
 
+  // Get selected property from the list based on selectedPropertyId
+  const selectedProperty = useMemo(() => {
+    if (!selectedPropertyId || !propertiesWithDistance?.length) return propertiesWithDistance?.[0] || null;
+    return propertiesWithDistance.find((prop: any) => prop.zpid === selectedPropertyId) || propertiesWithDistance[0];
+  }, [selectedPropertyId, propertiesWithDistance]);
+
   useEffect(() => {
     if (propertiesWithDistance.length > 0) {
-      // Set the first property as selected if none is selected
-      if (!selectedPropertyId) {
-        const firstProperty = propertiesWithDistance[0];
-        setSelectedPropertyId(firstProperty.zpid);
-      }
-
-      // Update property data in store with calculated distances
+      // Update property data in store
       setPropertyData({ ...propertyDataByLocation, nearbyHomes: propertiesWithDistance });
-
-      // Get the first property with valid coordinates
-      const propertyWithCoords = propertyDataByLocation.nearbyHomes.find(
-        (home: any) => home.latitude && home.longitude
-      ) || propertyDataByLocation.nearbyHomes[0];
-
-      // Only proceed if we have valid coordinates
-      if (propertyWithCoords.latitude && propertyWithCoords.longitude) {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("lat", propertyWithCoords.latitude.toString());
-        params.set("lng", propertyWithCoords.longitude.toString());
-
-        // Don't update URL if we're already on the same page (prevents unnecessary history entries)
-        const currentLat = searchParams.get("lat");
-        const currentLng = searchParams.get("lng");
-
-        if (currentLat !== params.get("lat") || currentLng !== params.get("lng")) {
-          router.push(`?${params.toString()}`);
-        }
-      } else {
-        console.warn("Property missing coordinates:", propertyWithCoords);
+      
+      // Set first property as selected if none is selected
+      if (!selectedPropertyId) {
+        setSelectedPropertyId(propertiesWithDistance[0].zpid);
       }
     }
-  }, [selectedPropertyId, searchedTerm, propertiesWithDistance, propertyDataByLocation, router, searchParams, setPropertyData, setSelectedPropertyId]);
+  }, [propertiesWithDistance, propertyDataByLocation, selectedPropertyId, setPropertyData, setSelectedPropertyId]);
 
   // Show location prompt if no location and no search term
   if (showLocationPrompt) {
@@ -191,6 +176,12 @@ const PropertiesListComponent = () => {
       <LocationPrompt 
         onLocationSet={() => {
           setShowLocationPrompt(false);
+          // Auto-trigger nearby properties search after location is set
+          setTimeout(() => {
+            if (userLocation) {
+              console.log('Location set, auto-fetching nearby properties...');
+            }
+          }, 500);
         }}
       />
     );
@@ -227,8 +218,23 @@ const PropertiesListComponent = () => {
     );
   }
 
-  // If no search has been performed yet
-  if (!searchedTerm) {
+  // If no search has been performed yet but we have location, show nearby properties
+  if (!searchedTerm && userLocation && (!propertyDataByLocation || isLoading)) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <PageLoader />
+          <p className="mt-4 text-gray-600">Finding properties near you...</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Searching within 5 miles of your location
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // If no search has been performed and no location
+  if (!searchedTerm && !userLocation) {
     return (
       <div className="min-h-[80vh] bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="max-w-4xl mx-auto text-center">
@@ -361,18 +367,28 @@ const PropertiesListComponent = () => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-gray-800">
-                {searchedTerm ? `Properties in ${searchedTerm}` : 'Properties Near You'}
+                {searchedTerm ? `Properties in ${searchedTerm}` : (
+                  userLocation ? 'Properties Near You' : 'Property Search Results'
+                )}
               </h2>
               <div className="flex flex-wrap items-center gap-2 mt-1">
                 <p className="text-gray-600">
                   {propertiesWithDistance.length} properties found
-                  {propertyDataByLocation?.searchRadius && (
+                  {!searchedTerm && userLocation && (
+                    <span className="ml-1">within 5 miles of your location</span>
+                  )}
+                  {propertyDataByLocation?.searchRadius && searchedTerm && (
                     <span className="ml-1">within {propertyDataByLocation.searchRadius} miles</span>
                   )}
                 </p>
                 {propertyDataByLocation?.searchType && (
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                    {propertyDataByLocation.searchType === 'location-based' ? 'Near You' : propertyDataByLocation.searchType} search
+                    {propertyDataByLocation.searchType === 'location-based' ? '📍 Nearby Properties' : propertyDataByLocation.searchType} search
+                  </span>
+                )}
+                {!searchedTerm && userLocation && (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                    🏠 Auto-discovered
                   </span>
                 )}
                 {propertyDataByLocation?.filtersApplied ? (
@@ -385,7 +401,25 @@ const PropertiesListComponent = () => {
                   </span>
                 )}
               </div>
-              {!propertyDataByLocation?.filtersApplied && (
+              {!propertyDataByLocation?.filtersApplied && !searchedTerm && userLocation && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-1">
+                  <p className="text-sm text-gray-500">
+                    💡 Showing all nearby properties. Use search above to explore other areas or apply filters to refine results.
+                  </p>
+                  <button
+                    onClick={() => {
+                      clearLocation();
+                      window.location.reload();
+                    }}
+                    className="text-sm text-red-600 hover:text-red-800 font-medium flex items-center gap-1 self-start sm:self-auto"
+                    title="Remove location and search manually"
+                  >
+                    <IoMdClose className="w-3 h-3" />
+                    Remove Near Me
+                  </button>
+                </div>
+              )}
+              {!propertyDataByLocation?.filtersApplied && searchedTerm && (
                 <p className="text-sm text-gray-500 mt-1">
                   💡 Showing all property types (For Sale, Recently Sold, For Rent). Use filters above to refine results.
                 </p>

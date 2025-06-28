@@ -46,6 +46,11 @@ export const listingStatus = [
   { id: "ForSale,RecentlySold", label: "For Sale & Sold" },
 ];
 
+export const searchLocation = [
+  { id: "", label: "Current Search" },
+  { id: "nearme", label: "📍 Near Me" },
+];
+
 export const distance = [
   { id: "1", label: "1 mile" },
   { id: "2", label: "2 miles" },

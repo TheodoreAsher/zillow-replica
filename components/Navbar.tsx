@@ -12,6 +12,7 @@ import {
   price,
   size,
   listingStatus,
+  searchLocation,
 } from "@/lib/filterItems";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
@@ -40,7 +41,7 @@ const Navbar = () => {
 
   const handleSearch = useCallback(() => {
     router.push(`?query=${getQueryString()}`);
-    queryClient.invalidateQueries({ queryKey: ["zillow-unified"] });
+    queryClient.invalidateQueries({ queryKey: ["property-search"] });
   }, [router, getQueryString]);
 
   // Sync search input with query state
@@ -95,17 +96,19 @@ const Navbar = () => {
           {/* Logo/Brand and Location */}
           <div className="flex-shrink-0 flex items-center gap-4">
             <h1 className="text-xl sm:text-2xl font-bold text-blue-600">Zillow</h1>
-            {userLocation && !searchedTerm && (
+            {userLocation && (
               <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600 bg-green-50 px-3 py-1 rounded-full border border-green-200">
                 <IoLocationOutline className="w-4 h-4 text-green-600" />
-                <span>Near You</span>
+                <span>{searchedTerm ? 'Location Set' : 'Near You'}</span>
                 <button
                   onClick={() => {
                     clearLocation();
-                    window.location.reload();
+                    if (!searchedTerm) {
+                      window.location.reload();
+                    }
                   }}
                   className="text-green-600 hover:text-green-800 ml-1"
-                  title="Clear location and search again"
+                  title="Remove location and search manually"
                 >
                   <IoMdClose className="w-3 h-3" />
                 </button>
@@ -386,6 +389,25 @@ const Navbar = () => {
                 </div>
               </div>
 
+              {/* Search Area - Mobile */}
+              <div className="grid grid-cols-1 gap-3">
+                <Dropdown
+                  title="Search Area"
+                  items={searchLocation}
+                  value={query.searchArea || ""}
+                  onChange={(value) => {
+                    updateQuery("searchArea", value);
+                    if (value === "nearme" && userLocation) {
+                      updateQuery("searchedTerm", "");
+                      queryClient.invalidateQueries({ queryKey: ["property-search"] });
+                      setTimeout(() => {
+                        router.push(`?query=${getQueryString()}`);
+                      }, 100);
+                    }
+                  }}
+                />
+              </div>
+
               {/* Display Options - Mobile */}
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
@@ -465,6 +487,20 @@ const Navbar = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Search Area - Desktop */}
+              <Dropdown
+                title="Search Area"
+                items={searchLocation}
+                value={query.searchArea || ""}
+                onChange={(value) => {
+                  updateQuery("searchArea", value);
+                  if (value === "nearme" && userLocation) {
+                    updateQuery("searchedTerm", "");
+                    setTimeout(handleSearch, 100);
+                  }
+                }}
+              />
 
               {/* Display Options */}
               <div className="ml-auto flex items-center gap-3">

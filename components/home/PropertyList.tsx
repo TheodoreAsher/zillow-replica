@@ -178,7 +178,7 @@ const PropertyList = ({
           <div className="divide-y divide-gray-200">
             {sortedData?.map((property: any, index: number) => (
               <PropertyCard
-                key={property.zpid || index}
+                key={`${property.zpid}-${property.listingType || 'default'}-${index}`}
                 property={property}
                 selectedState={selectedState}
                 columns={columns}
@@ -193,7 +193,7 @@ const PropertyList = ({
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {sortedData?.map((property: any, index: number) => (
               <PropertyCard
-                key={property.zpid || index}
+                key={`${property.zpid}-${property.listingType || 'default'}-${index}`}
                 property={property}
                 selectedState={selectedState}
                 columns={columns}
